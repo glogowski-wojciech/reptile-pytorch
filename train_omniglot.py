@@ -21,6 +21,11 @@ def make_infinite(dataloader):
         for x in dataloader:
             yield x
 
+
+def to_generator(dataloader):
+    for x in dataloader:
+        yield x
+
 def Variable_(tensor, *args_, **kwargs):
     '''
     Make variable cuda depending on the arguments
@@ -47,13 +52,17 @@ parser.add_argument('logdir', help='Folder to store everything/load')
 parser.add_argument('--classes', default=5, type=int, help='classes in base-task (N-way)')
 parser.add_argument('--shots', default=5, type=int, help='shots per class (K-shot)')
 parser.add_argument('--train-shots', default=10, type=int, help='train shots')
-parser.add_argument('--meta-iterations', default=100000, type=int, help='number of meta iterations')
 parser.add_argument('--start-meta-iteration', default=0, type=int, help='start iteration')
-parser.add_argument('--iterations', default=5, type=int, help='number of base iterations')
-parser.add_argument('--test-iterations', default=50, type=int, help='number of base iterations')
-parser.add_argument('--batch', default=10, type=int, help='minibatch size in base task')
+parser.add_argument('--meta-iters', default=100000, type=int, help='number of meta iterations')
+parser.add_argument('--train-iters', default=5, type=int, help='number of base iterations')
+parser.add_argument('--test-iters', default=50, type=int, help='number of base iterations')
+parser.add_argument('--meta-batch', default=1, type=int, help='batch size in meta training')
+parser.add_argument('--train-batch', default=10, type=int, help='minibatch size in base task in training')
+parser.add_argument('--test-batch', default=10, type=int, help='minibatch size in base task in test')
 parser.add_argument('--meta-lr', default=1., type=float, help='meta learning rate')
 parser.add_argument('--lr', default=1e-3, type=float, help='base learning rate')
+parser.add_argument('--transductive', help='test all samples at once', action='store_true')
+
 
 # - General params
 parser.add_argument('--validation', default=0.1, type=float, help='Percentage of validation')
@@ -129,32 +138,46 @@ def do_learning(net, optimizer, train_iter, iterations):
         loss.backward()
         optimizer.step()
 
-    return loss.data[0]
+    return loss.item()
 
 
-def do_evaluation(net, test_iter, iterations):
-
-    losses = []
-    accuracies = []
+def do_evaluation(net, train, test):
     net.eval()
-    for iteration in xrange(iterations):
-        # Sample minibatch
-        data, labels = Variable_(test_iter.next())
+    if args.transductive:
+        test_batch = list(DataLoader(test, args.classes, shuffle=True))[0]
+        data, labels = Variable_(test_batch)
 
         # Forward pass
         prediction = net(data)
-
-        # Get loss
         loss = get_loss(prediction, labels)
 
         # Get accuracy
         argmax = net.predict(prediction)
         accuracy = (argmax == labels).float().mean()
 
-        losses.append(loss.data[0])
-        accuracies.append(accuracy.data[0])
+        return loss.item(), accuracy.item()
+    else:
+        losses = []
+        accuracies = []
+        for test_input, test_label in test:
+            test_input = test_input[None, :, :, :]
+            test_label = torch.tensor(test_label)[None]
 
-    return np.mean(losses), np.mean(accuracies)
+            data, labels = list(DataLoader(train, args.classes, shuffle=True))[0]
+            data = torch.cat([data, test_input])
+            labels = torch.cat([labels, test_label])
+            data, labels = Variable_(data), Variable_(labels)
+
+            prediction = net(data)[-1:]
+            label = labels[-1:]
+
+            loss = get_loss(prediction, label)
+            argmax = net.predict(prediction)
+            accuracy = (argmax == label).float()
+
+            losses.append(loss.item())
+            accuracies.append(accuracy.item())
+        return np.mean(losses), np.mean(accuracies)
 
 
 def get_optimizer(net, state=None):
@@ -204,27 +227,37 @@ else:
     raise ArgumentError('Bad checkpoint. Delete logdir folder to start over.')
 
 # Main loop
-for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iterations):
+for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iters):
 
     # Update learning rate
-    meta_lr = args.meta_lr * (1. - meta_iteration/float(args.meta_iterations))
+    meta_lr = args.meta_lr * (1. - meta_iteration/float(args.meta_iters))
     set_learning_rate(meta_optimizer, meta_lr)
 
-    # Clone model
-    net = meta_net.clone()
-    optimizer = get_optimizer(net, state)
-    # load state of base optimizer?
+    mean_net = meta_net.clone()
+    batch_nets = []
+    for _ in xrange(args.meta_batch):
+        # Clone model
+        net = meta_net.clone()
+        optimizer = get_optimizer(net, state)
+        # load state of base optimizer?
 
-    # Sample base task from Meta-Train
-    train = meta_train.get_random_task(args.classes, args.train_shots or args.shots)
-    train_iter = make_infinite(DataLoader(train, args.batch, shuffle=True))
+        # Sample base task from Meta-Train
+        train = meta_train.get_random_task(args.classes, args.train_shots or args.shots)
+        train_iter = make_infinite(DataLoader(train, args.train_batch, shuffle=True))
 
-    # Update fast net
-    loss = do_learning(net, optimizer, train_iter, args.iterations)
-    state = optimizer.state_dict()  # save optimizer state
+        # Update fast net
+        loss = do_learning(net, optimizer, train_iter, args.train_iters)
+        state = optimizer.state_dict()  # save optimizer state
+        batch_nets.append(net)
+
+    batch_params = [list(net.parameters()) for net in batch_nets]
+    batch_params = zip(*batch_params)
+    for mean_param, batch_param in zip(mean_net.parameters(), batch_params):
+        np_mean_param = np.mean([param.data.numpy() for param in batch_param], axis=0)
+        mean_param.data = torch.FloatTensor(np_mean_param)
 
     # Update slow net
-    meta_net.point_grad_to(net)
+    meta_net.point_grad_to(mean_net)
     meta_optimizer.step()
 
     # Meta-Evaluation
@@ -235,17 +268,14 @@ for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iteration
 
         for (meta_dataset, mode) in [(meta_train, 'train'), (meta_test, 'val')]:
 
-            train, test = meta_dataset.get_random_task_split(args.classes, train_K=args.shots, test_K=5)  # is that 5 ok?
-            train_iter = make_infinite(DataLoader(train, args.batch, shuffle=True))
-            test_iter = make_infinite(DataLoader(test, args.batch, shuffle=True))
-
-            # Base-train
             net = meta_net.clone()
             optimizer = get_optimizer(net, state)  # do not save state of optimizer
-            loss = do_learning(net, optimizer, train_iter, args.test_iterations)
+            train, test = meta_dataset.get_random_task_split(args.classes, train_K=args.shots, test_K=1)
 
-            # Base-test: compute meta-loss, which is base-validation error
-            meta_loss, meta_accuracy = do_evaluation(net, test_iter, 1)  # only one iteration for eval
+            train_iter = make_infinite(DataLoader(train, args.test_batch, shuffle=True))
+            loss = do_learning(net, optimizer, train_iter, args.test_iters)
+
+            meta_loss, meta_accuracy = do_evaluation(net, train, test)
 
             # (Logging)
             loss_ = '{}_loss'.format(mode)
