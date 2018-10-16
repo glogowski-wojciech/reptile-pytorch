@@ -137,7 +137,7 @@ def split_omniglot(meta_omniglot, num_train=1200):
     indices = np.arange(len(meta_omniglot))
     np.random.shuffle(indices)
     train_characters = meta_omniglot[indices[:num_train]]
-    test_characters = meta_omniglot[indices[-num_train:]]
+    test_characters = meta_omniglot[indices[num_train:]]
     train = MetaOmniglotSplit(train_characters, cache=meta_omniglot.cache, size=meta_omniglot.size,
                               transform_image=meta_omniglot.transform_image, transform_label=meta_omniglot.transform_label)
     test = MetaOmniglotSplit(test_characters, cache=meta_omniglot.cache, size=meta_omniglot.size,

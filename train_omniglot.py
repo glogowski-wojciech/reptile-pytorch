@@ -187,11 +187,11 @@ args = reproduce_1shot_5way_omniglot()
 #args = reproduce_1shot_5way_transductive_omniglot()
 #home_run = True
 home_run = False
-args.validate_every = 1000 # speed up experiment
+args.validate_every = 1000  # speed up experiment
 if home_run:
-    args.input = '../../two_columns/reptile-pytorch/omniglot'
-    args.meta_iters = 100
-    args.num_samples = 100
+    args.input = '../../omniglot'
+    args.meta_iters = 2000
+    args.num_samples = 200
 ### END OF HARDCODED ARGS
 print args
 args_filename = os.path.join(args.logdir, 'args.json')
