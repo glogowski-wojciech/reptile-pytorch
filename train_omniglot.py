@@ -54,6 +54,8 @@ parser.add_argument('--test-iterations', default=50, type=int, help='number of b
 parser.add_argument('--batch', default=10, type=int, help='minibatch size in base task')
 parser.add_argument('--meta-lr', default=1., type=float, help='meta learning rate')
 parser.add_argument('--lr', default=1e-3, type=float, help='base learning rate')
+parser.add_argument('--lr_multiplier0', default=1.0, type=float, help='learning rate multiplier for column 0')
+parser.add_argument('--lr_multiplier1', default=1.0, type=float, help='learning rate multiplier for column 1')
 
 # - General params
 parser.add_argument('--validation', default=0.1, type=float, help='Percentage of validation')
@@ -108,7 +110,7 @@ print 'Meta-Test characters', len(meta_test)
 # Loss
 cross_entropy = nn.NLLLoss()
 def get_loss(prediction, labels):
-    return cross_entropy(prediction, labels)
+    return cross_entropy(prediction[1], labels)  # TODO: Ustalic przez ktora koncowke ma byc trenowane
 
 
 def do_learning(net, optimizer, train_iter, iterations):
@@ -148,7 +150,7 @@ def do_evaluation(net, test_iter, iterations):
         loss = get_loss(prediction, labels)
 
         # Get accuracy
-        argmax = net.predict(prediction)
+        argmax = net.predict(prediction[1])  # TODO: Ustalic przez ktora koncowke ma byc trenowane
         accuracy = (argmax == labels).float().mean()
 
         losses.append(loss.data[0])
@@ -168,12 +170,17 @@ def set_learning_rate(optimizer, lr):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-
 # Build model, optimizer, and set states
-meta_net = OmniglotModel(args.classes)
+meta_net = OmniglotModel(args.classes, 2)
 if args.cuda:
     meta_net.cuda()
-meta_optimizer = torch.optim.SGD(meta_net.parameters(), lr=args.meta_lr)
+
+lr_multipliers = [args.lr_multiplier0, args.lr_multiplier1]  # manual setup for 2 columns
+sgd_parameters = []
+for i, column in enumerate(meta_net.columns):
+    param_group = {'params': column.parameters(), 'lr': args.meta_lr * lr_multipliers[i]}
+    sgd_parameters.append(param_group)
+meta_optimizer = torch.optim.SGD(sgd_parameters)
 info = {}
 state = None
 
@@ -208,7 +215,7 @@ for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iteration
 
     # Update learning rate
     meta_lr = args.meta_lr * (1. - meta_iteration/float(args.meta_iterations))
-    set_learning_rate(meta_optimizer, meta_lr)
+    set_learning_rate(meta_optimizer, meta_lr)  # TODO: Update learning rate modification here!!!
 
     # Clone model
     net = meta_net.clone()
