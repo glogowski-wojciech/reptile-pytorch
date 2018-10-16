@@ -22,10 +22,6 @@ def make_infinite(dataloader):
             yield x
 
 
-def to_generator(dataloader):
-    for x in dataloader:
-        yield x
-
 def Variable_(tensor, *args_, **kwargs):
     '''
     Make variable cuda depending on the arguments
@@ -42,38 +38,161 @@ def Variable_(tensor, *args_, **kwargs):
         variable = variable.cuda()
     return variable
 
-# Parsing
-parser = argparse.ArgumentParser('Train reptile on omniglot')
+### BEGINNING OF COMMENTED ARGS
+# # Parsing
+# parser = argparse.ArgumentParser('Train reptile on omniglot')
+# 
+# # Mode
+# parser.add_argument('logdir', help='Folder to store everything/load')
+# 
+# # - Training params
+# parser.add_argument('--classes', default=5, type=int, help='classes in base-task (N-way)')
+# parser.add_argument('--shots', default=5, type=int, help='shots per class (K-shot)')
+# parser.add_argument('--train-shots', default=10, type=int, help='train shots')
+# parser.add_argument('--start-meta-iteration', default=0, type=int, help='start iteration')
+# parser.add_argument('--meta-iters', default=100000, type=int, help='number of meta iterations')
+# parser.add_argument('--train-iters', default=5, type=int, help='number of base iterations')
+# parser.add_argument('--test-iters', default=50, type=int, help='number of base iterations')
+# parser.add_argument('--meta-batch', default=1, type=int, help='batch size in meta training')
+# parser.add_argument('--train-batch', default=10, type=int, help='minibatch size in base task in training')
+# parser.add_argument('--test-batch', default=10, type=int, help='minibatch size in base task in test')
+# parser.add_argument('--meta-lr', default=1., type=float, help='meta learning rate')
+# parser.add_argument('--lr', default=1e-3, type=float, help='base learning rate')
+# parser.add_argument('--transductive', help='test all samples at once', action='store_true')
+# parser.add_argument('--num-samples', default=10000, type=int, help='batch size in meta training')
+#
+# 
+# # - General params
+# parser.add_argument('--validation', default=0.1, type=float, help='Percentage of validation')
+# parser.add_argument('--validate-every', default=10, type=int, help='Meta-evaluation every ... base-tasks')
+# parser.add_argument('--input', default='omniglot', help='Path to omniglot dataset')
+# parser.add_argument('--cuda', default=1, type=int, help='Use cuda')
+# parser.add_argument('--check-every', default=1000, help='Checkpoint every')
+# parser.add_argument('--checkpoint', default='', help='Path to checkpoint. This works only if starting fresh (i.e., no checkpoints in logdir)')
+# 
+# # Do some processing
+# args = parser.parse_args()
+### END OF COMMENTED ARGS
+### BEGINNING OF HARDCODED ARGS
+from bunch import Bunch
+param_dict = {
+    'logdir': 'log',
+    'classes': 5,
+    'shots': 5,
+    'train_shots': None,
+    'train_batch': 5,
+    'train_iters': 20,
+    'lr': 1e-3,
+    'meta_lr': 0.1,
+    'meta_batch': 1,
+    'start_meta_iteration': 0,
+    'meta_iters': 400000,
+    'test_batch': 5,
+    'test_iters': 50,
+    'num_samples': 10000,
+    'validate_every': 10,
+    'transductive': False,
+    'input': '/net/archive/groups/plggluna/wglogowski/omniglot/',
+    #'input': '../../two_columns/reptile-pytorch/omniglot',
+    'cuda': False,
+    'check_every': 10000000, # never check
+    'checkpoint': '',
+}
+def reproduce_1shot_5way_transductive_omniglot():
+    # python -u run_omniglot.py
+    # --shots 1
+    # --inner-batch 10
+    # --inner-iters 5
+    # --meta-step 1
+    # --meta-batch 5
+    # --meta-iters 100000
+    # --eval-batch 5
+    # --eval-iters 50
+    # --learning-rate 0.001
+    # --meta-step-final 0
+    # --train-shots 10
+    # --checkpoint ckpt_o15t
+    # --transductive
+    args = Bunch(param_dict.copy())
+    args.logdir = 'log/o15t'
+    args.shots = 1
+    args.train_batch = 10
+    args.train_iters = 5
+    args.meta_lr = 1.0
+    args.meta_batch = 5
+    args.meta_iters = 100000
+    args.test_batch = 5
+    args.test_iters = 50
+    args.lr = 0.001
+    args.train_shots = 10
+    args.transductive = True
+    return args
 
-# Mode
-parser.add_argument('logdir', help='Folder to store everything/load')
+def reproduce_5shot_5way_omniglot():
+    # python -u run_omniglot.py
+    # --train-shots 10
+    # --inner-batch 10
+    # --inner-iters 5
+    # --learning-rate 0.001
+    # --meta-step 1.0
+    # --meta-step-final 0
+    # --meta-batch 5
+    # --meta-iters 100000
+    # --eval-batch 5
+    # --eval-iters 50
+    # --checkpoint ckpt_o55
+    args = Bunch(param_dict.copy())
+    args.logdir = 'log/o55'
+    args.train_shots = 10
+    args.train_batch = 10
+    args.train_iters = 5
+    args.lr = 0.001
+    args.meta_lr = 1.0
+    args.meta_batch = 5
+    args.meta_iters = 100000
+    args.test_batch = 5
+    args.test_iters = 50
+    return args
 
-# - Training params
-parser.add_argument('--classes', default=5, type=int, help='classes in base-task (N-way)')
-parser.add_argument('--shots', default=5, type=int, help='shots per class (K-shot)')
-parser.add_argument('--train-shots', default=10, type=int, help='train shots')
-parser.add_argument('--start-meta-iteration', default=0, type=int, help='start iteration')
-parser.add_argument('--meta-iters', default=100000, type=int, help='number of meta iterations')
-parser.add_argument('--train-iters', default=5, type=int, help='number of base iterations')
-parser.add_argument('--test-iters', default=50, type=int, help='number of base iterations')
-parser.add_argument('--meta-batch', default=1, type=int, help='batch size in meta training')
-parser.add_argument('--train-batch', default=10, type=int, help='minibatch size in base task in training')
-parser.add_argument('--test-batch', default=10, type=int, help='minibatch size in base task in test')
-parser.add_argument('--meta-lr', default=1., type=float, help='meta learning rate')
-parser.add_argument('--lr', default=1e-3, type=float, help='base learning rate')
-parser.add_argument('--transductive', help='test all samples at once', action='store_true')
+def reproduce_1shot_5way_omniglot():
+    # python -u run_omniglot.py
+    # --shots 1
+    # --inner-batch 10
+    # --inner-iters 10
+    # --meta-step 1
+    # --meta-batch 5
+    # --meta-iters 100000
+    # --eval-batch 5
+    # --eval-iters 50
+    # --learning-rate 0.001
+    # --meta-step-final 0
+    # --train-shots 10
+    # --checkpoint ckpt_o15
+    args = Bunch(param_dict.copy())
+    args.logdir = 'log/o15'
+    args.shots = 1
+    args.train_batch = 10
+    args.train_iters = 10
+    args.meta_lr = 1.0
+    args.meta_batch = 5
+    args.meta_iters = 100000
+    args.test_batch = 5
+    args.test_iters = 50
+    args.lr = 0.001
+    args.train_shots = 10
+    return args
 
-
-# - General params
-parser.add_argument('--validation', default=0.1, type=float, help='Percentage of validation')
-parser.add_argument('--validate-every', default=100, type=int, help='Meta-evaluation every ... base-tasks')
-parser.add_argument('--input', default='omniglot', help='Path to omniglot dataset')
-parser.add_argument('--cuda', default=1, type=int, help='Use cuda')
-parser.add_argument('--check-every', default=1000, help='Checkpoint every')
-parser.add_argument('--checkpoint', default='', help='Path to checkpoint. This works only if starting fresh (i.e., no checkpoints in logdir)')
-
-# Do some processing
-args = parser.parse_args()
+args = reproduce_1shot_5way_omniglot()
+#args = reproduce_5shot_5way_omniglot()
+#args = reproduce_1shot_5way_transductive_omniglot()
+#home_run = True
+home_run = False
+args.validate_every = 1000 # speed up experiment
+if home_run:
+    args.input = '../../two_columns/reptile-pytorch/omniglot'
+    args.meta_iters = 100
+    args.num_samples = 100
+### END OF HARDCODED ARGS
 print args
 args_filename = os.path.join(args.logdir, 'args.json')
 run_dir = args.logdir
@@ -108,7 +227,7 @@ logger = SummaryWriter(run_dir)
 omniglot = MetaOmniglotFolder(args.input, size=(28, 28), cache=ImageCache(),
                               transform_image=transform_image,
                               transform_label=transform_label)
-meta_train, meta_test = split_omniglot(omniglot, args.validation)
+meta_train, meta_test = split_omniglot(omniglot)
 
 print 'Meta-Train characters', len(meta_train)
 print 'Meta-Test characters', len(meta_test)
@@ -306,3 +425,27 @@ for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iters):
         checkpoint_path = os.path.join(check_dir, 'check-{}.pth'.format(meta_iteration))
         torch.save(checkpoint, checkpoint_path)
         print 'Saved checkpoint to', checkpoint_path
+# evaluate
+for (meta_dataset, mode) in [(meta_train, 'train'), (meta_test, 'val')]:
+    eval_losses = []
+    eval_accuracies = []
+    for i in tqdm.trange(args.num_samples):
+        net = meta_net.clone()
+        optimizer = get_optimizer(net, state)  # do not save state of optimizer
+        train, test = meta_dataset.get_random_task_split(args.classes, train_K=args.shots, test_K=1)
+
+        train_iter = make_infinite(DataLoader(train, args.test_batch, shuffle=True))
+        loss = do_learning(net, optimizer, train_iter, args.test_iters)
+
+        meta_loss, meta_accuracy = do_evaluation(net, train, test)
+        eval_losses.append(meta_loss)
+        eval_accuracies.append(meta_accuracy)
+    eval_loss = np.mean(eval_losses)
+    eval_accuracy = np.mean(eval_accuracies)
+    loss_ = 'final {}_loss'.format(mode)
+    accuracy_ = 'final {}_accuracy'.format(mode)
+    print 'Final Meta-{}'.format(mode)
+    print 'final average metaloss', eval_loss
+    print 'final average accuracy', eval_accuracy
+    logger.add_scalar(loss_, eval_loss, args.meta_iters)
+    logger.add_scalar(accuracy_, eval_accuracy, args.meta_iters)

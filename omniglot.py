@@ -130,15 +130,14 @@ class MetaOmniglotSplit(AbstractMetaOmniglot):
     pass
 
 
-def split_omniglot(meta_omniglot, validation=0.1):
+def split_omniglot(meta_omniglot, num_train=1200):
     '''
     Split meta-omniglot into two meta-datasets of tasks (disjoint characters)
     '''
-    n_val = int(validation * len(meta_omniglot))
     indices = np.arange(len(meta_omniglot))
     np.random.shuffle(indices)
-    train_characters = meta_omniglot[indices[:-n_val]]
-    test_characters = meta_omniglot[indices[-n_val:]]
+    train_characters = meta_omniglot[indices[:num_train]]
+    test_characters = meta_omniglot[indices[-num_train:]]
     train = MetaOmniglotSplit(train_characters, cache=meta_omniglot.cache, size=meta_omniglot.size,
                               transform_image=meta_omniglot.transform_image, transform_label=meta_omniglot.transform_label)
     test = MetaOmniglotSplit(test_characters, cache=meta_omniglot.cache, size=meta_omniglot.size,
