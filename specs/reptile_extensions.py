@@ -14,12 +14,12 @@ def create_experiment_for_spec(parameters):
     project_name = "my-project"
     python_path = '.:specs/some_utils'
     paths_to_dump = ''  # e.g. 'plgrid tensor2tensor', do we need it?
-    tags = 'multithreading'.split(' ')
+    tags = 'reproduce omniglot o15t'.split(' ')
     parameters['git_head'] = get_git_head_info()
     return Experiment(project=project_name, name=name, script=script,
                       parameters=parameters, python_path=python_path,
                       paths_to_dump=paths_to_dump, tags=tags,
-                      time='0-1:0'  # days-hours:minutes
+                      time='2-0:0'  # days-hours:minutes
                       )
 
 # Set params_configurations, eg. as combinations of grid.

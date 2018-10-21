@@ -3,6 +3,7 @@ import argparse
 import tqdm
 import json
 import re
+import sys
 import torch
 from torch import nn
 from torch.autograd import Variable
@@ -10,6 +11,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 import numpy as np
 from tensorboardX import SummaryWriter
+from time import time
 
 from models import OmniglotModel
 from omniglot import MetaOmniglotFolder, split_omniglot, ImageCache, transform_image, transform_label
@@ -94,7 +96,7 @@ param_dict = {
     'transductive': False,
     'input': '/net/archive/groups/plggluna/wglogowski/omniglot/',
     #'input': '../../two_columns/reptile-pytorch/omniglot',
-    'cuda': False,
+    'cuda': True,
     'check_every': 10000000, # never check
     'checkpoint': '',
 }
@@ -182,18 +184,27 @@ def reproduce_1shot_5way_omniglot():
     args.train_shots = 10
     return args
 
-args = reproduce_1shot_5way_omniglot()
-#args = reproduce_5shot_5way_omniglot()
-#args = reproduce_1shot_5way_transductive_omniglot()
-#home_run = True
-home_run = False
+if 'o15t' in sys.argv[1]:
+    args = reproduce_1shot_5way_omniglot()
+elif 'o55' in sys.argv[1]:
+    args = reproduce_5shot_5way_omniglot()
+elif 'o15' in sys.argv[1]:
+    args = reproduce_1shot_5way_transductive_omniglot()
+args.logdir = sys.argv[1]
 args.validate_every = 1000  # speed up experiment
-if home_run:
+run_type = 'home'
+#run_type = 'final'
+#run_type = 'deb'
+if run_type == 'home':
     args.input = '../../omniglot'
-    args.meta_iters = 2000
+elif run_type == 'deb':
+    args.input = '../../omniglot'
+    args.meta_iters = 600
+    args.validate_every = 100
     args.num_samples = 200
 ### END OF HARDCODED ARGS
 print args
+print 'number of threads:', torch.get_num_threads()
 args_filename = os.path.join(args.logdir, 'args.json')
 run_dir = args.logdir
 check_dir = os.path.join(run_dir, 'checkpoint')
@@ -240,7 +251,6 @@ def get_loss(prediction, labels):
 
 
 def do_learning(net, optimizer, train_iter, iterations):
-
     net.train()
     for iteration in xrange(iterations):
         # Sample minibatch
@@ -349,6 +359,7 @@ else:
 for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iters):
 
     # Update learning rate
+
     meta_lr = args.meta_lr * (1. - meta_iteration/float(args.meta_iters))
     set_learning_rate(meta_optimizer, meta_lr)
 
@@ -372,8 +383,8 @@ for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iters):
     batch_params = [list(net.parameters()) for net in batch_nets]
     batch_params = zip(*batch_params)
     for mean_param, batch_param in zip(mean_net.parameters(), batch_params):
-        np_mean_param = np.mean([param.data.numpy() for param in batch_param], axis=0)
-        mean_param.data = torch.FloatTensor(np_mean_param)
+        np_mean_param = np.mean([param.data.cpu().numpy() for param in batch_param], axis=0)
+        mean_param.data = Variable_(torch.FloatTensor(np_mean_param))
 
     # Update slow net
     meta_net.point_grad_to(mean_net)
