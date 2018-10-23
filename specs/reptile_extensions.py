@@ -19,13 +19,14 @@ def create_experiment_for_spec(parameters):
     return Experiment(project=project_name, name=name, script=script,
                       parameters=parameters, python_path=python_path,
                       paths_to_dump=paths_to_dump, tags=tags,
-                      time='0-1:0'  # days-hours:minutes # TODO
+                      time='2-0:0'  # days-hours:minutes
                       )
 
 # Set params_configurations, eg. as combinations of grid.
 # params are also good place for e.g. output path, or git hash
 params_grid = dict(
     input=['/net/archive/groups/plggluna/wglogowski/omniglot'],
+    config=['o15t'],
     #config=['o15', 'o15t', 'o55'],
     #run_repeat=list(range(20)),
 )

@@ -1,8 +1,7 @@
-name: deepsense_ai_research_test
+name: reproduce_o15t
 parameters:
     input: "../../omniglot"
-    config: 'o15t'
-    debug: True
+    config: "o15t"
 project: deepsense-ai-research/meta-learning-reptile
 exclude:
     - .git
@@ -15,4 +14,5 @@ exclude:
     - plots
     - README.md
 tags:
-    - debug
+    - o15t
+    - reproduction
