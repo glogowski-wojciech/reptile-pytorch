@@ -1,4 +1,5 @@
 import argparse
+from bunch import Bunch
 
 
 def reproduce_1shot_5way_transductive_omniglot(args):
@@ -82,6 +83,30 @@ def reproduce_1shot_5way_omniglot(args):
     return args
 
 
+def get_default_args():
+    args = Bunch()
+    args.classes = 5
+    args.shots = 5
+    args.train_shots = 0
+    args.start_meta_iteration = 0
+    args.meta_iters = 400000
+    args.train_iters = 20
+    args.test_iters = 50
+    args.meta_batch = 1
+    args.train_batch = 5
+    args.test_batch = 5
+    args.meta_lr = 0.1
+    args.lr = 1e-3
+    args.transductive = False
+    args.num_samples = 10000
+    args.validate_every = 100
+    args.input = '../../omniglot'
+    args.cuda = 1
+    args.config = ''
+    args.debug = False
+    return args
+
+
 def parse_args():
     # Parsing
     parser = argparse.ArgumentParser('Train reptile on omniglot')
@@ -112,23 +137,27 @@ def parse_args():
     parser.add_argument('--cuda', default=1, type=int, help='Use cuda')
     parser.add_argument('--check-every', default=1000, help='Checkpoint every')
     parser.add_argument('--checkpoint', default='', help='Path to checkpoint. This works only if starting fresh (i.e., no checkpoints in logdir)')
-    parser.add_argument('--o15t', help='set omniglot 1-shot 5-way transductive config', action='store_true')
-    parser.add_argument('--o15', help='set omniglot 1-shot 5-way config', action='store_true')
-    parser.add_argument('--o55', help='set omniglot 5-shot 5-way config', action='store_true')
+    parser.add_argument('--config', default='', type=str, help='Set one from default configs (o15, o15t, o55)')
     parser.add_argument('--debug', help='short run for debug', action='store_true')
 
     # Do some processing
     args = parser.parse_args()
+    return args
+
+
+def preprocess_args(ctx):
+    args = get_default_args()
+    for param in ctx.params:
+        args[param] = ctx.params[param]
     args.train_shots = args.train_shots or args.shots
-    if args.o15t:
+    if 'o15t' in args.config:
         reproduce_1shot_5way_transductive_omniglot(args)
-    elif args.o15:
+    elif 'o15' in args.config:
         reproduce_1shot_5way_omniglot(args)
-    elif args.o55:
+    elif 'o55' in args.config:
         reproduce_5shot_5way_omniglot(args)
     if args.debug:
-        args.meta_iters = 100
+        args.meta_iters = 1000
         args.validate_every = 10
         args.num_samples = 10
-    print args
     return args

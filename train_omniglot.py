@@ -1,23 +1,28 @@
 import os
-import tqdm
-import json
+from neptune import ChannelType
 import torch
 from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 import numpy as np
-from tensorboardX import SummaryWriter
 
-from args import parse_args
+from args import parse_args, preprocess_args
 from models import OmniglotModel
 from omniglot import MetaOmniglotFolder, split_omniglot, ImageCache, transform_image, transform_label
-from utils import find_latest_file
+from specs.neptune_utils import get_configuration
 
 
 def make_infinite(dataloader):
     while True:
         for x in dataloader:
             yield x
+
+
+ctx, exp_dir_path = get_configuration()
+os.environ['MRUNNER_UNDER_NEPTUNE'] = '1'
+args = preprocess_args(ctx)
+print('args:')
+print(args)
 
 
 def Variable_(tensor, *args_, **kwargs):
@@ -37,35 +42,13 @@ def Variable_(tensor, *args_, **kwargs):
     return variable
 
 
-args = parse_args()
+train_meta_loss_channel = ctx.create_channel('train loss', channel_type=ChannelType.NUMERIC)
+train_meta_accuracy_channel = ctx.create_channel('train meta accuracy', channel_type=ChannelType.NUMERIC)
+val_meta_loss_channel = ctx.create_channel('val meta loss', channel_type=ChannelType.NUMERIC)
+val_meta_accuracy_channel = ctx.create_channel('val meta accuracy', channel_type=ChannelType.NUMERIC)
+meta_lr_channel = ctx.create_channel('meta lr', channel_type=ChannelType.NUMERIC)
 
-args_filename = os.path.join(args.logdir, 'args.json')
-run_dir = args.logdir
-check_dir = os.path.join(run_dir, 'checkpoint')
-
-# By default, continue training
-# Check if args.json exists
-if os.path.exists(args_filename):
-    print 'Attempting to resume training. (Delete {} to start over)'.format(args.logdir)
-    # Resuming training is incompatible with other checkpoint
-    # than the last one in logdir
-    assert args.checkpoint == '', 'Cannot load other checkpoint when resuming training.'
-    # Attempt to find checkpoint in logdir
-    args.checkpoint = args.logdir
-else:
-    print 'No previous training found. Starting fresh.'
-    # Otherwise, initialize folders
-    if not os.path.exists(run_dir):
-        os.makedirs(run_dir)
-    if not os.path.exists(check_dir):
-        os.makedirs(check_dir)
-    # Write args to args.json
-    with open(args_filename, 'wb') as fp:
-        json.dump(vars(args), fp, indent=4)
-
-
-# Create tensorboard logger
-logger = SummaryWriter(run_dir)
+final_channel = ctx.create_channel('final', channel_type=ChannelType.TEXT)
 
 # Load data
 # Resize is done by the MetaDataset because the result can be easily cached
@@ -74,8 +57,8 @@ omniglot = MetaOmniglotFolder(args.input, size=(28, 28), cache=ImageCache(),
                               transform_label=transform_label)
 meta_train, meta_test = split_omniglot(omniglot)
 
-print 'Meta-Train characters', len(meta_train)
-print 'Meta-Test characters', len(meta_test)
+print('Meta-Train characters', len(meta_train))
+print('Meta-Test characters', len(meta_test))
 
 
 # Loss
@@ -86,9 +69,9 @@ def get_loss(prediction, labels):
 
 def do_learning(net, optimizer, train_iter, iterations):
     net.train()
-    for iteration in xrange(iterations):
+    for iteration in range(iterations):
         # Sample minibatch
-        data, labels = Variable_(train_iter.next())
+        data, labels = Variable_(next(train_iter))
 
         # Forward pass
         prediction = net(data)
@@ -160,37 +143,10 @@ meta_net = OmniglotModel(args.classes)
 if args.cuda:
     meta_net.cuda()
 meta_optimizer = torch.optim.SGD(meta_net.parameters(), lr=args.meta_lr)
-info = {}
 state = None
 
-
-# checkpoint is directory -> Find last model or '' if does not exist
-if os.path.isdir(args.checkpoint):
-    latest_checkpoint = find_latest_file(check_dir)
-    if latest_checkpoint:
-        print 'Latest checkpoint found:', latest_checkpoint
-        args.checkpoint = os.path.join(check_dir, latest_checkpoint)
-    else:
-        args.checkpoint = ''
-
-# Start fresh
-if args.checkpoint == '':
-    print 'No checkpoint. Starting fresh'
-
-# Load file
-elif os.path.isfile(args.checkpoint):
-    print 'Attempting to load checkpoint', args.checkpoint
-    checkpoint = torch.load(args.checkpoint)
-    meta_net.load_state_dict(checkpoint['meta_net'])
-    meta_optimizer.load_state_dict(checkpoint['meta_optimizer'])
-    state = checkpoint['optimizer']
-    args.start_meta_iteration = checkpoint['meta_iteration']
-    info = checkpoint['info']
-else:
-    raise ArgumentError('Bad checkpoint. Delete logdir folder to start over.')
-
 # Main loop
-for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iters):
+for meta_iteration in range(args.start_meta_iteration, args.meta_iters):
 
     # Update learning rate
 
@@ -199,7 +155,7 @@ for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iters):
 
     mean_net = meta_net.clone()
     batch_nets = []
-    for _ in xrange(args.meta_batch):
+    for _ in range(args.meta_batch):
         # Clone model
         net = meta_net.clone()
         optimizer = get_optimizer(net, state)
@@ -226,9 +182,6 @@ for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iters):
 
     # Meta-Evaluation
     if meta_iteration % args.validate_every == 0:
-        print '\n\nMeta-iteration', meta_iteration
-        print '(started at {})'.format(args.start_meta_iteration)
-        print 'Meta LR', meta_lr
 
         for (meta_dataset, mode) in [(meta_train, 'train'), (meta_test, 'val')]:
 
@@ -242,39 +195,19 @@ for meta_iteration in tqdm.trange(args.start_meta_iteration, args.meta_iters):
             meta_loss, meta_accuracy = do_evaluation(net, train, test)
 
             # (Logging)
-            loss_ = '{}_loss'.format(mode)
-            accuracy_ = '{}_accuracy'.format(mode)
-            meta_lr_ = 'meta_lr'
-            info.setdefault(loss_, {})
-            info.setdefault(accuracy_, {})
-            info.setdefault(meta_lr_, {})
-            info[loss_][meta_iteration] = meta_loss
-            info[accuracy_][meta_iteration] = meta_accuracy
-            info[meta_lr_][meta_iteration] = meta_lr
-            print '\nMeta-{}'.format(mode)
-            print 'average metaloss', np.mean(info[loss_].values())
-            print 'average accuracy', np.mean(info[accuracy_].values())
-            logger.add_scalar(loss_, meta_loss, meta_iteration)
-            logger.add_scalar(accuracy_, meta_accuracy, meta_iteration)
-            logger.add_scalar(meta_lr_, meta_lr, meta_iteration)
+            if mode == 'train':
+                train_meta_loss_channel.send(x=meta_iteration, y=meta_loss)
+                train_meta_accuracy_channel.send(x=meta_iteration, y=meta_accuracy)
+            elif mode == 'val':
+                val_meta_loss_channel.send(x=meta_iteration, y=meta_loss)
+                val_meta_accuracy_channel.send(x=meta_iteration, y=meta_accuracy)
+        meta_lr_channel.send(x=meta_iteration, y=meta_lr)
 
-    if meta_iteration % args.check_every == 0 and not (args.checkpoint and meta_iteration == args.start_meta_iteration):
-        # Make a checkpoint
-        checkpoint = {
-            'meta_net': meta_net.state_dict(),
-            'meta_optimizer': meta_optimizer.state_dict(),
-            'optimizer': state,
-            'meta_iteration': meta_iteration,
-            'info': info
-        }
-        checkpoint_path = os.path.join(check_dir, 'check-{}.pth'.format(meta_iteration))
-        torch.save(checkpoint, checkpoint_path)
-        print 'Saved checkpoint to', checkpoint_path
 # evaluate
 for (meta_dataset, mode) in [(meta_train, 'train'), (meta_test, 'val')]:
     eval_losses = []
     eval_accuracies = []
-    for i in tqdm.trange(args.num_samples):
+    for i in range(args.num_samples):
         net = meta_net.clone()
         optimizer = get_optimizer(net, state)  # do not save state of optimizer
         train, test = meta_dataset.get_random_task_split(args.classes, train_K=args.shots, test_K=1)
@@ -287,10 +220,6 @@ for (meta_dataset, mode) in [(meta_train, 'train'), (meta_test, 'val')]:
         eval_accuracies.append(meta_accuracy)
     eval_loss = np.mean(eval_losses)
     eval_accuracy = np.mean(eval_accuracies)
-    loss_ = 'final {}_loss'.format(mode)
-    accuracy_ = 'final {}_accuracy'.format(mode)
-    print 'Final Meta-{}'.format(mode)
-    print 'final average metaloss', eval_loss
-    print 'final average accuracy', eval_accuracy
-    logger.add_scalar(loss_, eval_loss, args.meta_iters)
-    logger.add_scalar(accuracy_, eval_accuracy, args.meta_iters)
+    final_channel.send('{}:'.format(mode))
+    final_channel.send('final metaloss: {}'.format(eval_loss))
+    final_channel.send('final accuracy: {}'.format(eval_accuracy))

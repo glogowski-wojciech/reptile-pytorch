@@ -26,6 +26,7 @@ def get_configuration():
       exec(open(commandline_args.ex).read(), vars)
       spec_func = vars['spec']
       # take first experiment (params configuration)
+      print('specs', spec_func())
       experiment = spec_func()[0]
       params = experiment.parameters
     else:

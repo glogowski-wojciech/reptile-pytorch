@@ -27,7 +27,7 @@ class ImageCache(object):
         if key not in self.cache:
             self.cache[key] = read_image(path, size)
         else:
-            pass  #print 'reusing cache', key
+            pass  #print('reusing cache', key)
         return self.cache[key]
 
 
@@ -91,14 +91,16 @@ class AbstractMetaOmniglot(object):
                     train_samples.append(new_path)
                 else:
                     test_samples.append(new_path)
-        train_task = FewShot(train_samples,
-                            meta={'characters': character_indices, 'split': 'train'},
-                            parent=self
-                            )
-        test_task = FewShot(test_samples,
-                             meta={'characters': character_indices, 'split': 'test'},
-                             parent=self
-                             )
+        train_task = FewShot(
+            train_samples,
+            meta={'characters': character_indices, 'split': 'train'},
+            parent=self
+        )
+        test_task = FewShot(
+            test_samples,
+            meta={'characters': character_indices, 'split': 'test'},
+            parent=self
+        )
         return train_task, test_task
 
 
@@ -121,7 +123,7 @@ class MetaOmniglotFolder(AbstractMetaOmniglot):
                         'path': os.path.join(root, alphabet, character, filename),
                         'character_idx': character_idx
                     })
-        characters_list = np.asarray(self._characters.items())
+        characters_list = np.asarray(list(self._characters.items()))
         AbstractMetaOmniglot.__init__(self, characters_list, *args, **kwargs)
 
 
@@ -161,12 +163,12 @@ if __name__ == '__main__':
                                        transform_image=transform_image)
 
     train, test = split_omniglot(meta_omniglot)
-    print 'all', len(meta_omniglot)
-    print 'train', len(train)
-    print 'test', len(test)
+    print('all', len(meta_omniglot))
+    print('train', len(train))
+    print('test', len(test))
 
     base_task = train.get_random_task()
-    print 'base_task', len(base_task)
-    print 'ask once', base_task[0]
-    print 'ask twice', base_task[0]
+    print('base_task', len(base_task))
+    print('ask once', base_task[0])
+    print('ask twice', base_task[0])
 

@@ -1,0 +1,18 @@
+name: deepsense_ai_research_test
+parameters:
+    input: "../../omniglot"
+    config: 'o15t'
+    debug: True
+project: deepsense-ai-research/meta-learning-reptile
+exclude:
+    - .git
+    - .gitignore
+    - .idea
+    - __pycache__
+    - reptile_sine.ipynb
+    - LICENSE
+    - run_many.py
+    - plots
+    - README.md
+tags:
+    - debug
